@@ -1,0 +1,1 @@
+# Kovra IDP Agent Binary\n\nPre-built binaries for the Kovra IDP agent used in bare-metal Kubernetes provisioning.\n\nSee [releases](https://github.com/MateSousa/kovra-agent-binary/releases) for downloads.
