@@ -72,8 +72,11 @@ check_system() {
                 *) log_warn "Ubuntu $VERSION_ID not officially supported (tested on 22.04/24.04)" ;;
             esac
             ;;
+        debian)
+            log_info "Detected Debian $VERSION_ID"
+            ;;
         *)
-            log_warn "OS '$ID' not officially supported (tested on Ubuntu 22.04/24.04)"
+            log_warn "OS '$ID' not officially supported (tested on Ubuntu 22.04/24.04, Debian 12)"
             ;;
     esac
 
