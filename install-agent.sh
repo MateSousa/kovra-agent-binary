@@ -1,6 +1,6 @@
 #!/bin/sh
 # Kovra IDP Agent Install Script
-# Downloads and runs the IDP agent for bare-metal Kubernetes provisioning.
+# Downloads and installs the IDP agent as a systemd service for bare-metal Kubernetes provisioning.
 #
 # Required environment variables:
 #   REGISTRATION_TOKEN  - One-time registration token from the IDP
@@ -11,6 +11,7 @@
 # Optional environment variables:
 #   AGENT_DOWNLOAD_URL  - Override agent binary download URL
 #   AGENT_VERSION       - Agent version to download (default: latest)
+#   CONTROL_PLANE_ENDPOINT - API server endpoint for worker nodes to join
 
 set -eu
 
@@ -23,6 +24,10 @@ NC='\033[0m'
 log_info()  { printf "${GREEN}[INFO]${NC} %s\n" "$1"; }
 log_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 log_error() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
+
+AGENT_BIN="/usr/local/bin/idp-agent"
+SERVICE_NAME="idp-agent"
+ENV_FILE="/etc/idp-agent/agent.env"
 
 # Validate required environment variables
 check_required_vars() {
@@ -95,9 +100,6 @@ download_agent() {
     AGENT_VERSION="${AGENT_VERSION:-v0.1.0}"
     AGENT_DOWNLOAD_URL="${AGENT_DOWNLOAD_URL:-https://github.com/MateSousa/kovra-agent-binary/releases/download/${AGENT_VERSION}/idp-agent-linux-${ARCH}}"
 
-    INSTALL_DIR="/usr/local/bin"
-    AGENT_BIN="${INSTALL_DIR}/idp-agent"
-
     log_info "Downloading agent from: $AGENT_DOWNLOAD_URL"
 
     if command -v curl >/dev/null 2>&1; then
@@ -113,27 +115,60 @@ download_agent() {
     log_info "Agent binary installed at $AGENT_BIN"
 }
 
-# Run the agent
-run_agent() {
-    log_info "Starting IDP agent..."
-    log_info "  IDP Endpoint: $IDP_ENDPOINT"
-    log_info "  Node Role:    $NODE_ROLE"
-    log_info "  Install Mode: $INSTALL_MODE"
+# Create environment file with agent configuration
+create_env_file() {
+    mkdir -p "$(dirname "$ENV_FILE")"
 
-    export REGISTRATION_TOKEN
-    export IDP_ENDPOINT
-    export NODE_ROLE
-    export INSTALL_MODE
+    cat > "$ENV_FILE" <<EOF
+REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+IDP_ENDPOINT=${IDP_ENDPOINT}
+NODE_ROLE=${NODE_ROLE}
+INSTALL_MODE=${INSTALL_MODE}
+EOF
 
-    # Pass through optional env vars if set
-    [ -n "${CONTROL_PLANE_ENDPOINT:-}" ] && export CONTROL_PLANE_ENDPOINT
+    # Add optional vars if set
+    [ -n "${CONTROL_PLANE_ENDPOINT:-}" ] && echo "CONTROL_PLANE_ENDPOINT=${CONTROL_PLANE_ENDPOINT}" >> "$ENV_FILE"
 
-    exec "$AGENT_BIN" \
-        --mode=bootstrap \
-        --registration-token="$REGISTRATION_TOKEN" \
-        --idp-endpoint="$IDP_ENDPOINT" \
-        --node-role="$NODE_ROLE" \
-        --install-mode="$INSTALL_MODE"
+    chmod 600 "$ENV_FILE"
+    log_info "Environment file created at $ENV_FILE"
+}
+
+# Install systemd service
+install_service() {
+    cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
+[Unit]
+Description=Kovra IDP Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=${ENV_FILE}
+ExecStart=${AGENT_BIN}
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    log_info "Systemd service installed: ${SERVICE_NAME}"
+}
+
+# Start the agent service
+start_service() {
+    systemctl enable "${SERVICE_NAME}"
+    systemctl start "${SERVICE_NAME}"
+    log_info "Agent service started and enabled on boot"
+    log_info ""
+    log_info "Useful commands:"
+    log_info "  journalctl -u ${SERVICE_NAME} -f    # Follow logs"
+    log_info "  systemctl status ${SERVICE_NAME}     # Check status"
+    log_info "  systemctl restart ${SERVICE_NAME}    # Restart agent"
+    log_info "  systemctl stop ${SERVICE_NAME}       # Stop agent"
 }
 
 main() {
@@ -143,7 +178,9 @@ main() {
     check_required_vars
     check_system
     download_agent
-    run_agent
+    create_env_file
+    install_service
+    start_service
 }
 
 main
