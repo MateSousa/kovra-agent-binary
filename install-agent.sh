@@ -10,8 +10,10 @@
 #
 # Optional environment variables:
 #   AGENT_DOWNLOAD_URL  - Override agent binary download URL
-#   AGENT_VERSION       - Agent version to download (default: latest)
+#   AGENT_VERSION       - Agent version to download (default: v0.2.0)
 #   CONTROL_PLANE_ENDPOINT - API server endpoint for worker nodes to join
+#   WEBSOCKET_ENABLED   - Enable WebSocket mode for IDP communication (default: true)
+#   EXTERNAL_IP         - Override for the VM's public IP address
 
 set -eu
 
@@ -97,10 +99,10 @@ check_system() {
 
 # Download agent binary
 download_agent() {
-    AGENT_VERSION="${AGENT_VERSION:-v0.1.0}"
+    AGENT_VERSION="${AGENT_VERSION:-v0.2.0}"
     AGENT_DOWNLOAD_URL="${AGENT_DOWNLOAD_URL:-https://github.com/MateSousa/kovra-agent-binary/releases/download/${AGENT_VERSION}/idp-agent-linux-${ARCH}}"
 
-    log_info "Downloading agent from: $AGENT_DOWNLOAD_URL"
+    log_info "Downloading agent ${AGENT_VERSION} from: $AGENT_DOWNLOAD_URL"
 
     if command -v curl >/dev/null 2>&1; then
         curl -sfL -o "$AGENT_BIN" "$AGENT_DOWNLOAD_URL"
@@ -124,10 +126,12 @@ REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
 IDP_ENDPOINT=${IDP_ENDPOINT}
 NODE_ROLE=${NODE_ROLE}
 INSTALL_MODE=${INSTALL_MODE}
+WEBSOCKET_ENABLED=${WEBSOCKET_ENABLED:-true}
 EOF
 
     # Add optional vars if set
     [ -n "${CONTROL_PLANE_ENDPOINT:-}" ] && echo "CONTROL_PLANE_ENDPOINT=${CONTROL_PLANE_ENDPOINT}" >> "$ENV_FILE"
+    [ -n "${EXTERNAL_IP:-}" ] && echo "EXTERNAL_IP=${EXTERNAL_IP}" >> "$ENV_FILE"
 
     chmod 600 "$ENV_FILE"
     log_info "Environment file created at $ENV_FILE"
